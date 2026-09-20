@@ -1,0 +1,11 @@
+{
+  "id": "greyhaven", "title": "GREYHAVEN / AFTER HOURS", "ruleset": "nightshift-v1",
+  "roadColor": "101C2C", "buildingColor": "1C2940", "windowColor": "70E8CF",
+  "phaseDurationTicks": 3600, "buildingSpacingCm": 440, "rainEnabled": true,
+  "phases": [
+    {"name": "SERVICE ROADS", "accent": "66E3C4"},
+    {"name": "NEON MARKET", "accent": "E985E5"},
+    {"name": "FREIGHT CROSSING", "accent": "F5B85A"},
+    {"name": "BLACKOUT PULSE", "accent": "9BADF7"}
+  ]
+}
