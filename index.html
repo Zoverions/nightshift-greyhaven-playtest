@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#071017">
+  <meta name="description" content="Nightshift: Greyhaven — a neon survival runner. Runs entirely in your browser; no install, no account.">
+  <title>Nightshift: Greyhaven</title>
+  <link rel="stylesheet" href="./nightshift.css">
+  <link rel="stylesheet" href="./entrance/entrance.css">
+</head>
+<body>
+  <div class="city-grid" aria-hidden="true"></div>
+  <header class="masthead">
+    <a class="wordmark" href="./index.html">ZOVERIONS</a>
+    <!-- Rewind-clock entrance, preserved from the original site. Default disabled:
+         data-nightshift-url stays empty and the element stays hidden until the
+         hidden entrance passes its release gates. -->
+    <div class="nightshift-entrance" data-nightshift-entrance data-nightshift-url="" hidden>
+      <button class="nightshift-entrance__dial" data-rewind-dial type="button" aria-label="Rewind time to enter Nightshift">
+        <span class="nightshift-entrance__ticks" aria-hidden="true"></span>
+        <span class="nightshift-entrance__hand" aria-hidden="true"></span>
+        <span class="nightshift-entrance__hub" aria-hidden="true"></span>
+      </button>
+      <span class="nightshift-entrance__clue">Some time can be returned.</span>
+    </div>
+    <span class="frequency">GREYHAVEN · 60HZ · NIGHTSHIFT-V1</span>
+  </header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">ZOVERIONS / NIGHTSHIFT</p>
+      <h1>GREY<span>HAVEN</span></h1>
+      <div class="signal-rule" aria-hidden="true"><i></i><i></i><i></i></div>
+      <p class="lede">The city never sleeps and neither does the shift. Thread the barrier rows, ride the high wire, jump the low ones — every run is a fresh seed from the same fair clock. Ranked runs are re-simulated server-side, so the board is cheat-proof.</p>
+    </section>
+    <section class="stream-panel" aria-label="Play">
+      <div class="panel-heading">
+        <div>
+          <h2>Enter the city</h2>
+          <p class="lede">Web-native edition — the whole simulation runs on this page. No install, no account, no download. Mouse, touch, or keyboard.</p>
+        </div>
+        <span class="status-pip" aria-hidden="true"></span>
+      </div>
+      <div class="stream-message">
+        <div>
+          <strong>The shift is yours.</strong>
+          <span>Guest name, one click, and you're clocked in.</span>
+          <a class="enter-button" href="./play.html" style="display:inline-block; text-decoration:none; margin-top:18px;">Enter Greyhaven</a>
+        </div>
+      </div>
+    </section>
+    <section class="board-panel" aria-label="Hall of fame">
+      <div class="panel-heading">
+        <div>
+          <h2>Hall of fame</h2>
+          <p class="board-rule">TOP 50 · RANKED RUNS · SERVER VERIFIED</p>
+        </div>
+        <span class="status-pip" aria-hidden="true"></span>
+      </div>
+      <div id="board-state" class="board-state">Loading the board…</div>
+      <div class="board-scroll"><table hidden id="board-table">
+        <thead><tr><th>Rank</th><th>Name</th><th>Score</th><th>Ticks</th><th>Date</th></tr></thead>
+        <tbody id="board-body"></tbody>
+      </table></div>
+    </section>
+  </main>
+  <footer>
+    <span>NIGHTSHIFT: GREYHAVEN · WEB-NATIVE</span>
+    <span>RULESET NIGHTSHIFT-V1 · GUEST IDENTITIES ONLY</span>
+  </footer>
+  <script type="module" src="./entrance/entrance.js"></script>
+  <script type="module">
+    import { fetchBoard } from './js/api.js';
+    const cfg = await fetch('./config.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    const apiBase = cfg.apiBase || '';
+    const boardState = document.getElementById('board-state');
+    const boardTable = document.getElementById('board-table');
+    const boardBody = document.getElementById('board-body');
+    if (!apiBase) { boardState.textContent = 'Ranked board is offline — the game is still fully playable.'; }
+    else try {
+      const data = await fetchBoard(apiBase, 50);
+      const rows = data.entries || [];
+      if (!rows.length) { boardState.textContent = 'No ranked shifts yet. Yours could be first.'; }
+      else {
+        boardState.hidden = true; boardTable.hidden = false;
+        for (const e of rows) {
+          const tr = document.createElement('tr');
+          if (e.rank <= 10) tr.classList.add('top-ten');
+          if (e.rank === 1) tr.classList.add('place-1');
+          const medal = e.rank === 1 ? '<span class="podium podium--gold">GOLD</span>' : e.rank === 2 ? '<span class="podium podium--silver">SILVER</span>' : e.rank === 3 ? '<span class="podium podium--bronze">BRONZE</span>' : `<span class="rank-number">${e.rank}</span>`;
+          tr.innerHTML = `<td>${medal}</td><th scope="row"></th><td></td><td></td><td></td>`;
+          tr.children[1].textContent = e.name; tr.children[2].textContent = e.score.toLocaleString();
+          tr.children[3].textContent = e.ticks.toLocaleString(); tr.children[4].textContent = new Date(e.createdAt).toLocaleDateString();
+          boardBody.appendChild(tr);
+        }
+      }
+    } catch { boardState.textContent = 'The board is unreachable right now — the game is still fully playable.'; }
+  </script>
+</body>
+</html>
