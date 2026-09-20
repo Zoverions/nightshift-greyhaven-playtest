@@ -89,6 +89,13 @@ export class Sfx {
     this.noise({ dur: 0.25, gain: 0.32, lowpass: 700 });
     this.tone({ freq: 220, freqEnd: 70, dur: 0.28, type: 'sawtooth', gain: 0.18 });
   }
+  dizzy() {
+    // woozy warble: the pitch wobbles downward like cartoon dizziness
+    const seq = [520, 440, 470, 380, 410, 320];
+    seq.forEach((f, i) => this.tone({
+      freq: f, freqEnd: f * 0.92, dur: 0.11, type: 'sine', gain: 0.16, delay: i * 0.09,
+    }));
+  }
   tier() {
     this.tone({ freq: 440, dur: 0.1, type: 'triangle', gain: 0.2 });
     this.tone({ freq: 660, dur: 0.12, type: 'triangle', gain: 0.2, delay: 0.09 });

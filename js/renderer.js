@@ -111,14 +111,27 @@ export class Renderer {
       grad.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = grad; g.fillRect(s/2 - 2, 0, 4, s);
     });
+    this.texStar = makeTex(gl, 64, (g, s) => {
+      g.fillStyle = 'rgba(255,255,255,1)';
+      g.beginPath();
+      const cx = s / 2, cy = s / 2, R = s / 2 - 2, r = R * 0.45;
+      for (let i = 0; i < 10; i++) {
+        const rad = i % 2 === 0 ? R : r;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad;
+        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
+      g.closePath(); g.fill();
+    });
 
     this.vbo = gl.createBuffer();
     this.batches = new Map();
     this.view = { w: 1, h: 1, scale: 0.01, cx: 0, cy: 0 };
 
-    // District palette (defaults mirror Content/Data/greyhaven.json).
+    // District palette (defaults mirror Content/Data/greyhaven.json,
+    // shifted toward the ZOVERIONS banner: deep purple/magenta/cyan neon).
     this.setDistrict({
-      roadColor: '101C2C', buildingColor: '1C2942', windowColor: '70E8CF',
+      roadColor: '1B1030', buildingColor: '1C2942', windowColor: '70E8CF',
       buildingSpacingCm: 440, rainEnabled: true,
       phases: [
         { name: 'SERVICE ROADS', accent: '66E3C4' },
@@ -239,6 +252,18 @@ export class Renderer {
         this.quad(this.texBox, false, lane, y, 90, 420, 0, 0.35, 0.42, 0.5, 0.5);
       }
     }
+    // manholes + neon puddles on the road, scrolling with distance
+    const propOff = scroll % 2600;
+    for (let i = -4; i <= 4; i++) {
+      const y = i * 2600 - propOff;
+      if (y < -8000 || y > 9000) continue;
+      const mx = ((i * 5303) % 12000) - 6000;
+      this.quad(this.texDisc, false, mx, y, 520, 380, 0, 0.05, 0.06, 0.09, 1);
+      this.quad(this.texDisc, false, mx, y, 380, 260, 0, 0.09, 0.11, 0.15, 1);
+      const px2 = ((i * 9171) % 14000) - 7000;
+      this.glow(px2, y + 900, 900, accent, 0.10);
+      this.quad(this.texDisc, false, px2, y + 900, 620, 300, 0.2, 0.10, 0.14, 0.2, 0.8);
+    }
     // buildings, windows, neon bollards scroll past on both sides
     const bOff = scroll % this.spacing;
     for (const side of [-1, 1]) {
@@ -251,12 +276,33 @@ export class Renderer {
         this.quad(this.texBox, false, bx, y + 240 + bh * 0.12, 3300, 3800, 0,
           this.building[0] * 1.5, this.building[1] * 1.5, this.building[2] * 1.5, 1);
         for (let wI = 0; wI < 3; wI++) {
+          // windows flicker faintly, each on its own deterministic phase
+          const flick = 0.72 + 0.28 * Math.sin(f.visualTime * 2.1 + i * 3.7 + wI * 2.3);
           this.quad(this.texDisc, false, side * 11100, y + (wI - 1) * 700, 340, 340, 0,
-            windowCol[0], windowCol[1], windowCol[2], 0.95);
-          this.glow(side * 11100, y + (wI - 1) * 700, 700, windowCol, 0.25);
+            windowCol[0], windowCol[1], windowCol[2], 0.95 * flick);
+          this.glow(side * 11100, y + (wI - 1) * 700, 700, windowCol, 0.25 * flick);
         }
         this.glow(side * 9200, y, 640, accent, 0.5);
         this.quad(this.texDisc, false, side * 9200, y, 200, 200, 0, accent[0], accent[1], accent[2], 1);
+        // antenna spire with a blinking beacon on every third tower
+        if ((i + 8) % 3 === 0) {
+          const spx = bx + side * 900;
+          this.quad(this.texBox, false, spx, y + 2150 + bh * 0.12, 90, 900, 0,
+            0.1, 0.12, 0.18, 1);
+          const blink = 0.35 + 0.65 * Math.max(0, Math.sin(f.visualTime * 2.4 + i * 1.3));
+          const bc = (i % 2 === 0) ? [1, 0.25, 0.3] : [0.3, 0.9, 1];
+          this.glow(spx, y + 2600 + bh * 0.12, 500 * blink + 150, bc, 0.7 * blink);
+          this.quad(this.texDisc, true, spx, y + 2600 + bh * 0.12, 150, 150, 0,
+            bc[0], bc[1], bc[2], blink);
+        }
+        // sidewalk clutter: crates and drums the courier weaves past
+        const cSeed = i * 7 + (side > 0 ? 3 : 0);
+        const cx1 = side * (10200 + ((cSeed * 613) % 900));
+        this.quad(this.texBox, false, cx1, y + 500, 420, 420, 0.06, 0.23, 0.18, 0.12, 1);
+        this.quad(this.texBox, false, cx1, y + 500, 340, 340, 0.06, 0.3, 0.24, 0.16, 1);
+        const dx1 = side * (10600 + ((cSeed * 911) % 700));
+        this.quad(this.texDisc, false, dx1, y - 700, 360, 360, 0, 0.14, 0.2, 0.26, 1);
+        this.glow(dx1, y - 700, 500, accent, 0.18);
       }
     }
 
@@ -280,6 +326,46 @@ export class Renderer {
     }
 
     if (!curr.dead || true) this.drawCat(px, py, pz, jump, f, accent);
+
+    // bonk recovery: dizzy stars orbit the cat while stunned, and a gold
+    // guide ring marks the hole the cat is auto-running toward.
+    const stun = f.stunTicks | 0;
+    const guiding = stun > 0 || !!f.autoRunning;
+    if (guiding && !curr.dead) {
+      const gx = (f.autoX | 0), gy = (f.autoY | 0);
+      if (!f.reducedMotion) {
+        const pulse = 0.6 + 0.4 * Math.sin(f.visualTime * 6);
+        const rad = 950 + 130 * Math.sin(f.visualTime * 6);
+        for (let i = 0; i < 18; i++) {
+          if (i % 2) continue;
+          const a = (i * 2 * Math.PI) / 18 + f.visualTime * 0.8;
+          this.quad(this.texDisc, true, gx + Math.cos(a) * rad, gy + Math.sin(a) * rad,
+            110, 110, 0, 1, 0.8, 0.25, 0.85);
+        }
+        this.glow(gx, gy, 1500 * pulse + 600, [1, 0.75, 0.2], 0.4);
+        // dotted guide line from the cat to the hole
+        const dx = gx - px, dy = gy - py;
+        const steps = Math.floor(Math.hypot(dx, dy) / 520);
+        for (let i = 1; i < steps; i++) {
+          const tt = i / steps;
+          this.quad(this.texDisc, true, px + dx * tt, py + dy * tt, 80, 80, 0,
+            1, 0.8, 0.3, 0.5 * (1 - tt * 0.5));
+        }
+      } else {
+        this.glow(gx, gy, 1600, [1, 0.75, 0.2], 0.5);
+      }
+    }
+    if (stun > 0 && !curr.dead && !f.reducedMotion) {
+      for (let i = 0; i < 4; i++) {
+        const a = f.visualTime * 5.2 + (i * 2 * Math.PI) / 4;
+        const sx = px + Math.cos(a) * 640;
+        const sy = py + pz * 0.22 + 430 + Math.sin(a * 2) * 90;
+        const tw = 0.65 + 0.35 * Math.sin(f.visualTime * 9 + i * 1.7);
+        this.glow(sx, sy, 430 * tw, [1, 0.8, 0.25], 0.35);
+        this.quad(this.texStar, true, sx, sy, 270 * tw, 270 * tw, a * 0.7,
+          1, 0.85, 0.3, 0.95);
+      }
+    }
 
     // dotted breadcrumb trail: the path the cat is committed to
     const dots = f.trailDots || [];
@@ -378,6 +464,26 @@ export class Renderer {
         body[0] * 1.6, body[1] * 1.6, body[2] * 1.6, edge);
       this.glow(hx, hy, Math.max(w, d) * 0.8, edgeCol, 0.4 * edge);
       this.quad(this.texBox, false, hx, hy, w * 0.55, d * 0.55, 0, cream[0], cream[1], cream[2], 0.85 * edge);
+      if (!tall) {
+        // masonry courses so a Block reads as a solid wall, not cargo;
+        // the top edge catches the neon and the base glows a warning
+        // toward the courier.
+        const courses = Math.max(1, Math.round(d / 260));
+        for (let c = 1; c < courses; c++) {
+          const ly = hy - d / 2 + (c * d) / courses;
+          this.quad(this.texBox, false, hx, ly, w * 0.96, 26, 0, 0.05, 0.07, 0.11, 0.9 * edge);
+        }
+        const cols = Math.min(14, Math.max(1, Math.round(w / 1500)));
+        for (let c = 0; c <= cols; c++) {
+          const lx = hx - w / 2 + (c * w) / cols;
+          this.quad(this.texBox, false, lx, hy, 26, d * 0.9, 0, 0.05, 0.07, 0.11, 0.7 * edge);
+        }
+        this.quad(this.texBox, false, hx, hy + d / 2 - 60, w * 0.98, 120, 0,
+          body[0] * 2.2, body[1] * 2.2, body[2] * 2.2, edge);
+        const warn = 0.55 + 0.35 * Math.sin(t * 3 + hx * 0.001);
+        this.glow(hx, hy - d / 2, Math.min(w, 9000) * 0.9, [1, 0.45, 0.1], 0.30 * warn * edge);
+        this.quad(this.texBox, false, hx, hy - d / 2 + 40, w * 0.98, 80, 0, 1, 0.5, 0.12, 0.85 * edge);
+      }
       if (tall) {
         const rot = t * 0.9;
         for (const s of [-1, 1]) {
@@ -389,6 +495,7 @@ export class Renderer {
 
   drawCat(px, py, pz, jump, f, accent) {
     const dead = f.curr.dead;
+    const stunned = (f.stunTicks | 0) > 0;
     const fade = dead ? Math.max(0.25, 1 - (f.visualTime - f.deathAt) * 1.2) : 1;
     const gy = py;                       // ground position (shadow, trail)
     const cy = py + pz * 0.22;           // body rides up with jump height
@@ -396,6 +503,8 @@ export class Renderer {
     const stride = f.stride;
     const air = f.curr.player.airborne;
 
+    // soft accent glow under the courier so it pops off the road
+    if (!dead) this.glow(px, gy, 1050 * s, accent, 0.16 * fade);
     // landing shadow shrinks as the cat climbs
     const shScale = 1.15 - jump * 0.28;
     this.quad(this.texDisc, false, px, gy, 1320 * shScale, 860 * shScale, 0, 0, 0, 0, 0.42 * fade);
@@ -411,7 +520,8 @@ export class Renderer {
       while (d < -Math.PI) d += 2 * Math.PI;
       this.faceA += d * (1 - Math.exp(-f.dt * 10));
     }
-    const heading = this.faceA;
+    const heading = this.faceA + (stunned && !f.reducedMotion
+      ? Math.sin(f.visualTime * 26) * 0.07 : 0);
 
     // trail behind the facing direction
     if (!dead) {
@@ -426,7 +536,9 @@ export class Renderer {
       return [px + (lx * c - ly * s2) * s, cy + (lx * s2 + ly * c) * s];
     };
     const ORANGE = [0.91, 0.5, 0.2], CREAM = [0.96, 0.9, 0.78],
-      ARMOR = [0.16, 0.2, 0.26], EYE = [0.45, 1, 0.68];
+      ARMOR = [0.16, 0.2, 0.26], EYE = [0.45, 1, 0.68],
+      CYAN = [0.35, 0.85, 1], MAGENTA = [0.95, 0.28, 0.78],
+      ZGLOW = [0.72, 0.4, 1];
 
     const part = (tex, add, lx, ly, w, h, rot, col, a) => {
       const [wx, wy] = R(lx, ly);
@@ -453,6 +565,16 @@ export class Renderer {
     // body, haunch, head
     part(this.texDisc, false, 0, 0, 980 * s, 560 * s, 0, ORANGE, 1);
     part(this.texDisc, false, -330, 0, 520 * s, 620 * s, 0, [0.82, 0.44, 0.17], 1);
+    // ginger tabby stripes across the back
+    for (const sx of [-160, 20, 200]) {
+      part(this.texBox, false, sx, 0, 64 * s, 500 * s, 0, [0.58, 0.3, 0.12], 0.85);
+    }
+    part(this.texDisc, false, -330, 0, 300 * s, 540 * s, 0, [0.58, 0.3, 0.12], 0.5);
+    // cyber jacket collar at the neck, purple-trimmed
+    part(this.texBox, false, 250, 0, 130 * s, 560 * s, 0, [0.07, 0.09, 0.13], 1);
+    part(this.texBox, true, 250, 0, 130 * s, 44 * s, 0, ZGLOW, 0.9);
+    part(this.texBox, true, 250, -260 * s, 130 * s, 30 * s, 0, ZGLOW, 0.7);
+    part(this.texBox, true, 250, 260 * s, 130 * s, 30 * s, 0, ZGLOW, 0.7);
     part(this.texDisc, false, 470, 60, 620 * s, 640 * s, 0, ORANGE, 1);
     part(this.texDisc, false, 740, 20, 250 * s, 400 * s, 0, CREAM, 1);   // muzzle
     part(this.texDisc, false, 850, 60, 110 * s, 160 * s, 0, ARMOR, 1);   // nose
@@ -460,21 +582,43 @@ export class Renderer {
     for (const sd of [-1, 1]) {
       part(this.texTri, false, 360, sd * 250, 300 * s, 420 * s, sd * -0.6, ORANGE, 1);
       part(this.texTri, false, 350, sd * 265, 150 * s, 220 * s, sd * -0.6, CREAM, 1);
-      // eyes
-      part(this.texDisc, false, 660, sd * 240, 170 * s, 130 * s, 0, EYE, 1);
-      part(this.texBox, false, 700, sd * 250, 60 * s, 110 * s, 0, [0.05, 0.08, 0.1], 1);
-      // whiskers
+      if (stunned) {
+        // X-eyes: cartoon knockout while the cat is dizzy
+        const [ex, ey] = R(660, sd * 240);
+        const xs = 150 * s;
+        this.quad(this.texBox, false, ex, ey, xs * 2.1, xs * 0.55, Math.PI / 4 + heading,
+          0.08, 0.1, 0.14, fade);
+        this.quad(this.texBox, false, ex, ey, xs * 2.1, xs * 0.55, -Math.PI / 4 + heading,
+          0.08, 0.1, 0.14, fade);
+      } else {
+        // eyes: luminous green with a soft glow, per the brand
+        const [ex2, ey2] = R(660, sd * 240);
+        this.glow(ex2, ey2, 320 * s, EYE, 0.5 * fade);
+        part(this.texDisc, false, 660, sd * 240, 170 * s, 130 * s, 0, EYE, 1);
+        part(this.texBox, false, 700, sd * 250, 60 * s, 110 * s, 0, [0.05, 0.08, 0.1], 1);
+      }
+      // whiskers: cyan, per the brand
       const [wxx, wyy] = R(720, sd * 330);
-      this.quad(this.texStreak, false, wxx, wyy, 26, 340 * s, Math.PI / 2 + heading + sd * 0.2,
-        CREAM[0], CREAM[1], CREAM[2], 0.8 * fade);
+      this.quad(this.texStreak, true, wxx, wyy, 30, 360 * s, Math.PI / 2 + heading + sd * 0.2,
+        CYAN[0], CYAN[1], CYAN[2], 0.85 * fade);
     }
-    // armor plate + signal spine + stripes
+    // armor plate + signal spine + stripes + magenta circuitry
     part(this.texBox, false, -20, 120, 500 * s, 520 * s, 0, ARMOR, 1);
     part(this.texBox, true, -20, 200, 380 * s, 80 * s, 0, EYE, 0.95);
     this.glow(px, cy + 200 * s, 700 * s, EYE, 0.3 * fade);
     for (let i = 0; i < 3; i++) {
       part(this.texBox, false, -240 + i * 165, 130, 42 * s, 540 * s, 0, [0.72, 0.36, 0.14], 1);
     }
+    // magenta circuit traces on the armor (upper half, clear of the Z)
+    part(this.texBox, true, -140, 40, 200 * s, 24 * s, 0, MAGENTA, 0.8);
+    part(this.texBox, true, -40, 40, 24 * s, 150 * s, 0, MAGENTA, 0.8);
+    part(this.texBox, true, 90, 110, 140 * s, 24 * s, 0.5, MAGENTA, 0.65);
+    // glowing Z shoulder emblem — the courier's brand (kept clear of the spine)
+    const zx = -30, zy = -60, zs = s;
+    this.glow(...R(zx, zy), 420 * zs, ZGLOW, 0.28 * fade);
+    part(this.texBox, true, zx, zy + 80 * zs, 220 * zs, 44 * zs, 0, ZGLOW, 0.95);
+    part(this.texBox, true, zx, zy - 80 * zs, 220 * zs, 44 * zs, 0, ZGLOW, 0.95);
+    part(this.texBox, true, zx, zy, 250 * zs, 44 * zs, -0.62, ZGLOW, 0.95);
   }
 }
 Renderer._nextTexId = 1;

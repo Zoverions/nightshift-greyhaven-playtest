@@ -1,6 +1,6 @@
 {
   "id": "greyhaven", "title": "GREYHAVEN / AFTER HOURS", "ruleset": "nightshift-v1",
-  "roadColor": "101C2C", "buildingColor": "1C2940", "windowColor": "70E8CF",
+  "roadColor": "1B1030", "buildingColor": "1C2940", "windowColor": "70E8CF",
   "phaseDurationTicks": 3600, "buildingSpacingCm": 440, "rainEnabled": true,
   "phases": [
     {"name": "SERVICE ROADS", "accent": "66E3C4"},

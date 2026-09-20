@@ -21,6 +21,9 @@ function parseSnapshot(bytes) {
     tick: u32(), dead: u32() === 1, distance: i64(), score: i64(),
     pickupsCollected: u32(), nearMisses: u32(), combo: i32(), tier: i32(),
     lives: u32(),
+    stunTicks: i32(),
+    autoRunning: u32() === 1,
+    autoX: i32(), autoY: i32(),
     player: {
       x: i32(), y: i32(), z: i32(), vx: i32(), vy: i32(),
       airborne: u32() === 1, jumpCooldown: i32(),

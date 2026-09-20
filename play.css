@@ -54,7 +54,16 @@ body { margin: 0; overflow: hidden; background: #050b10; }
   padding: clamp(24px, 5vw, 44px);
   text-align: center;
 }
-.menu-panel h1 { font-size: clamp(2.6rem, 9vw, 4.6rem); margin-bottom: 10px; }
+.menu-panel h1 {
+  font-size: clamp(2.6rem, 9vw, 4.6rem); margin-bottom: 10px;
+  background: linear-gradient(100deg, var(--cyan-deep), var(--cyan) 40%, var(--magenta));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 26px rgba(231, 74, 209, .25));
+}
+.menu-panel {
+  border-color: var(--line-magenta);
+  box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 0 60px rgba(155, 92, 246, .12);
+}
 .menu-best { color: var(--cyan); font: 600 .72rem ui-monospace, monospace; letter-spacing: .14em; margin: 0 0 14px; min-height: 1em; }
 .menu-panel .lede { margin: 0 auto 18px; font-size: 1rem; }
 .controls-help { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; color: var(--muted); font-size: .85rem; }

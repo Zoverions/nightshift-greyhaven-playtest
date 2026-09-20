@@ -4,11 +4,15 @@
   --panel: rgba(9, 22, 30, .92);
   --panel-2: #0d2029;
   --cyan: #72f7e8;
+  --cyan-deep: #25d8ff;
+  --magenta: #e74ad1;
+  --purple: #9b5cf6;
   --amber: #ffb54a;
   --coral: #ff6f61;
   --paper: #e8f4ef;
   --muted: #91aaa9;
   --line: rgba(114, 247, 232, .2);
+  --line-magenta: rgba(231, 74, 209, .25);
   font-family: "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
   background: var(--ink);
   color: var(--paper);

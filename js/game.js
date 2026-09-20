@@ -177,13 +177,16 @@ class Game {
   setMenuStatus(text) { $('menu-status').textContent = text || ''; }
 
   // A hit costs one of nine lives (value = lives remaining). The final hit
-  // is handled by onDeath() via the dead flag.
+  // is handled by onDeath() via the dead flag. The crash also starts the
+  // core's bonk recovery (dizzy pause, then auto-run to the hole).
   onCrash(livesLeft) {
     if (livesLeft <= 0) return;
     this.hitFlash = 1;
     this.pulse = 1;
     this.sfx.hit();
-    this.setCue(livesLeft === 1 ? 'LAST LIFE — make it count' : `HIT — ${livesLeft} LIVES LEFT`, 2.2);
+    this.sfx.dizzy();
+    this.setCue(livesLeft === 1 ? 'BONK! — LAST LIFE — dizzy… finding the gap'
+                                : `BONK! — ${livesLeft} LIVES LEFT — dizzy… finding the gap`, 2.6);
   }
 
   onDeath() {
@@ -343,35 +346,56 @@ class Game {
 
   stepOnce() {
     const p = this.curr.player;
-    // Keyboard draws the trail too: the cursor cruises at fixed speed.
-    const kx = (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) -
-               (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0);
-    const ky = (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) -
-               (this.keys.has('s') || this.keys.has('arrowdown') ? 1 : 0);
-    if (kx !== 0 || ky !== 0) {
-      const n = Math.hypot(kx, ky);
-      this.cursor.x = clampInt(this.cursor.x + (kx / n) * 360, -8400, 8400);
-      this.cursor.y = clampInt(this.cursor.y + (ky / n) * 360, -6500, 6500);
-    }
-    // While airborne on touch the finger is up, so the cursor cannot wander:
-    // the drawn path stays committed.
-    if (this.touchId !== null && p.airborne) {
-      const dx = this.cursor.x - this.trail.x, dy = this.cursor.y - this.trail.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 1400) {
-        this.cursor.x = clampInt(this.trail.x + (dx / d) * 1400, -8400, 8400);
-        this.cursor.y = clampInt(this.trail.y + (dy / d) * 1400, -6500, 6500);
+    // While the cat is bonked (dizzy pause) or auto-running to the hole, the
+    // core ignores steering: freeze the breadcrumb trail so no stale dots
+    // pile up, and park the cursor on the cat.
+    const recovering = (this.curr.stunTicks | 0) > 0 || !!this.curr.autoRunning;
+    if (recovering) {
+      this.cursor.x = clampInt(Math.round(this.curr.player.x), -8400, 8400);
+      this.cursor.y = clampInt(Math.round(this.curr.player.y), -6500, 6500);
+    } else {
+      // Keyboard draws the trail too: the cursor cruises at fixed speed.
+      const kx = (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) -
+                 (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0);
+      const ky = (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) -
+                 (this.keys.has('s') || this.keys.has('arrowdown') ? 1 : 0);
+      if (kx !== 0 || ky !== 0) {
+        const n = Math.hypot(kx, ky);
+        this.cursor.x = clampInt(this.cursor.x + (kx / n) * 360, -8400, 8400);
+        this.cursor.y = clampInt(this.cursor.y + (ky / n) * 360, -6500, 6500);
+      }
+      // While airborne on touch the finger is up, so the cursor cannot wander:
+      // the drawn path stays committed.
+      if (this.touchId !== null && p.airborne) {
+        const dx = this.cursor.x - this.trail.x, dy = this.cursor.y - this.trail.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1400) {
+          this.cursor.x = clampInt(this.trail.x + (dx / d) * 1400, -8400, 8400);
+          this.cursor.y = clampInt(this.trail.y + (dy / d) * 1400, -6500, 6500);
+        }
       }
     }
     // The walker runs the drawn trail at chase speed; the cat chases the
-    // walker and can never teleport to the cursor.
-    this.trail.push(this.cursor.x, this.cursor.y);
-    const w = this.trail.advance(TRAIL_WALK_SPEED);
+    // walker and can never teleport to the cursor. Frozen while recovering.
+    if (!recovering) this.trail.push(this.cursor.x, this.cursor.y);
+    const w = recovering ? { x: this.curr.player.x, y: this.curr.player.y }
+                         : this.trail.advance(TRAIL_WALK_SPEED);
     const tx = Math.round(w.x), ty = Math.round(w.y);
     const jump = this.jumpPending;
     this.jumpPending = false; // edge: exactly one tick, like ConsumeInput
     this.prev = this.curr;
     this.curr = this.sim.step(this.handle, tx, ty, jump);
+    const stillRecovering = (this.curr.stunTicks | 0) > 0 || !!this.curr.autoRunning;
+    if (recovering && !stillRecovering) {
+      // Control is back: rejoin the trail at the cat so the walker doesn't
+      // yank it back toward the wall it just escaped.
+      const rx = clampInt(Math.round(this.curr.player.x), -8400, 8400);
+      const ry = clampInt(Math.round(this.curr.player.y), -6500, 6500);
+      this.trail.reset(rx, ry);
+      this.cursor.x = rx;
+      this.cursor.y = ry;
+      this.setCue('BACK ON YOUR PAWS — draw your line', 1.6);
+    }
     const fwd = (this.curr.distance - this.prev.distance) + (this.curr.player.y - this.prev.player.y);
     const side = this.curr.player.x - this.prev.player.x;
     this.lastScrollDelta = this.curr.distance - this.prev.distance;
@@ -413,6 +437,9 @@ class Game {
       visualTime: this.visualTime, pulse: this.pulse,
       stride: this.stride, hitFlash: this.hitFlash, dt: dt || 0,
       deathAt: this.deathAt, reducedMotion: this.reducedMotion,
+      stunTicks: this.curr.stunTicks | 0,
+      autoRunning: !!this.curr.autoRunning,
+      autoX: this.curr.autoX | 0, autoY: this.curr.autoY | 0,
     });
   }
 
