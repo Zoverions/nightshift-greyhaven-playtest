@@ -56,6 +56,7 @@ export class Renderer {
     if (!gl) throw new Error('WebGL2 is not available in this browser');
     this.gl = gl;
     this.canvas = canvas;
+    this.faceA = Math.PI / 2; // cat facing: eased toward velocity, starts looking up-road
 
     const sh = (type, src) => {
       const s = gl.createShader(type);
@@ -204,7 +205,8 @@ export class Renderer {
   }
 
   // --- scene ------------------------------------------------------------
-  // f: { prev, curr, alpha, targetX, targetY, visualTime, pulse, reducedMotion }
+  // f: { prev, curr, alpha, cursorX, cursorY, trailDots, visualTime, pulse,
+  //      stride, hitFlash, dt, deathAt, reducedMotion }
   render(f) {
     const gl = this.gl;
     const { prev, curr, alpha } = f;
@@ -279,11 +281,19 @@ export class Renderer {
 
     if (!curr.dead || true) this.drawCat(px, py, pz, jump, f, accent);
 
-    // aim target ring
+    // dotted breadcrumb trail: the path the cat is committed to
+    const dots = f.trailDots || [];
+    for (let i = 0; i < dots.length; i++) {
+      const d = dots[i];
+      const a = 0.22 + 0.5 * (i / Math.max(1, dots.length));
+      this.quad(this.texDisc, true, d.x, d.y, 90, 90, 0, 1, 0.82, 0.45, a);
+    }
+
+    // cursor ring: where the pointer is drawing
     for (let i = 0; i < 24; i++) {
       const a = (i * 2 * Math.PI) / 24;
       this.quad(this.texDisc, true,
-        f.targetX + Math.cos(a) * 450, f.targetY + Math.sin(a) * 450,
+        f.cursorX + Math.cos(a) * 450, f.cursorY + Math.sin(a) * 450,
         70, 70, 0, 1, 0.95, 0.8, 0.8);
     }
     // event pulse ring
@@ -294,6 +304,10 @@ export class Renderer {
         this.glow(px + Math.cos(a) * radius, py + Math.sin(a) * radius,
           260 * f.pulse + 60, accent, 0.5 * f.pulse);
       }
+    }
+    // hit flash: red wash when a life is lost
+    if (f.hitFlash > 0) {
+      this.glow(v.cx, v.cy, Math.max(v.viewW, v.viewH) * 0.62, [1, 0.12, 0.08], 0.42 * f.hitFlash);
     }
     // deterministic rain
     if (this.rainEnabled && !f.reducedMotion) {
@@ -313,7 +327,32 @@ export class Renderer {
     if (hy > 7000) edge = Math.max(0, (8500 - hy) / 1500);
     if (hy < -7000) edge = Math.max(0, (hy + 8000) / 1000);
     const cream = [0.96, 0.91, 0.78];
-    if (hz.kind === 2) { // Gap: dark pit with glowing edge rails
+    if (hz.kind === 4) { // Dog: a stray quadruped that runs the scent trail
+      const fur = [0.34, 0.25, 0.17], dark = [0.16, 0.11, 0.08];
+      this.glow(hx, hy, Math.max(w, d) * 0.85, [1, 0.2, 0.12], 0.35 * edge);
+      // legs
+      for (const lx of [-260, 260]) for (const ly of [-190, 190]) {
+        this.quad(this.texDisc, false, hx + lx, hy + ly, 170, 170, 0, dark[0], dark[1], dark[2], edge);
+      }
+      // body, head, snout (faces down-screen, toward the courier's scent)
+      this.quad(this.texDisc, false, hx, hy, 780, 600, 0, fur[0], fur[1], fur[2], edge);
+      this.quad(this.texDisc, false, hx, hy - 420, 400, 380, 0, fur[0] * 1.15, fur[1] * 1.15, fur[2] * 1.15, edge);
+      this.quad(this.texDisc, false, hx, hy - 640, 200, 220, 0, dark[0], dark[1], dark[2], edge);
+      // ears
+      for (const s of [-1, 1]) {
+        this.quad(this.texTri, false, hx + s * 170, hy - 560, 150, 260, s * -0.5,
+          dark[0], dark[1], dark[2], edge);
+        // eyes: red glints
+        this.quad(this.texDisc, true, hx + s * 120, hy - 430, 90, 90, 0, 1, 0.16, 0.1, 0.95 * edge);
+      }
+      // tail: wagging segments
+      let gx = hx, gy2 = hy + 330;
+      for (let i = 0; i < 3; i++) {
+        gx += Math.sin(t * 6 + i * 0.9) * 60;
+        gy2 += 130;
+        this.quad(this.texDisc, false, gx, gy2, 150, 150, 0, fur[0], fur[1], fur[2], edge);
+      }
+    } else if (hz.kind === 2) { // Gap: dark pit with glowing edge rails
       this.quad(this.texBox, false, hx, hy, w, d, 0, 0.01, 0.015, 0.03, edge);
       for (const s of [-1, 1]) {
         this.glow(hx, hy + s * hz.halfDepth, Math.max(w, 300), [1, 0.42, 0.2], 0.5 * edge);
@@ -361,18 +400,27 @@ export class Renderer {
     const shScale = 1.15 - jump * 0.28;
     this.quad(this.texDisc, false, px, gy, 1320 * shScale, 860 * shScale, 0, 0, 0, 0, 0.42 * fade);
 
-    // trail
+    // full 360° facing, eased toward the velocity direction; holds the last
+    // meaningful heading when the cat stops
+    const p = f.curr.player;
+    const sp = Math.hypot(p.vx, p.vy);
+    if (sp > 60 && f.dt > 0) {
+      const want = Math.atan2(p.vy, p.vx);
+      let d = want - this.faceA;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      this.faceA += d * (1 - Math.exp(-f.dt * 10));
+    }
+    const heading = this.faceA;
+
+    // trail behind the facing direction
     if (!dead) {
+      const bx = Math.cos(heading), by = Math.sin(heading);
       for (let i = 1; i <= 6; i++) {
         const k = 1 - i / 7;
-        this.glow(px, gy - i * 170 + pz * 0.088, 200 * k + 60, [0.4, 1, 0.7], 0.35 * k * fade);
+        this.glow(px - bx * i * 170, gy - by * i * 170 + pz * 0.088, 200 * k + 60, [0.4, 1, 0.7], 0.35 * k * fade);
       }
     }
-
-    // heading from velocity, eased like the Unreal presentation
-    const p = f.curr.player;
-    const fwd = Math.max(25, p.vy + (f.scrollDelta || 0));
-    const heading = Math.atan2(p.vx, fwd) * 0.45;
     const R = (lx, ly) => {
       const c = Math.cos(heading), s2 = Math.sin(heading);
       return [px + (lx * c - ly * s2) * s, cy + (lx * s2 + ly * c) * s];

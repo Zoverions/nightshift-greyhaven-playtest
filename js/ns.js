@@ -4,7 +4,7 @@
 // WebAssembly. This file only marshals flat little-endian buffers produced by
 // wasm/bridge.cpp into JS objects. No gameplay logic lives here.
 
-export const HazardKind = Object.freeze({ Block: 0, Barrier: 1, Gap: 2, Sweeper: 3 });
+export const HazardKind = Object.freeze({ Block: 0, Barrier: 1, Gap: 2, Sweeper: 3, Dog: 4 });
 export const EventKind = Object.freeze({
   Pickup: 0, NearMiss: 1, Jump: 2, Land: 3, Crash: 4, Tier: 5,
 });
@@ -20,6 +20,7 @@ function parseSnapshot(bytes) {
   const snap = {
     tick: u32(), dead: u32() === 1, distance: i64(), score: i64(),
     pickupsCollected: u32(), nearMisses: u32(), combo: i32(), tier: i32(),
+    lives: u32(),
     player: {
       x: i32(), y: i32(), z: i32(), vx: i32(), vy: i32(),
       airborne: u32() === 1, jumpCooldown: i32(),
@@ -108,6 +109,7 @@ export function wrapSim(mod, probes = false) {
       mod._ns_test_inject_hazard(h, id >>> 0, kind | 0, x | 0, y | 0, hw | 0, hd | 0, height | 0);
     api.testSpeed = (h) => mod._ns_test_speed(h);
     api.testSafeTarget = (h) => mod._ns_test_safe_target(h);
+    api.testShouldJump = (h) => mod._ns_test_should_jump(h) === 1;
     api.testSafeCorridors = (h) => {
       const ptr = mod._ns_test_safe_corridors_ptr(h);
       const len = mod._ns_test_safe_corridors_len(h);

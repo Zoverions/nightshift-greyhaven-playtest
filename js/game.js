@@ -10,6 +10,7 @@ import createSim from './sim.js';
 import { loadSim, EventKind, RULESET, TICK_RATE } from './ns.js';
 import { Renderer } from './renderer.js';
 import { Sfx } from './audio.js';
+import { Trail, TRAIL_WALK_SPEED } from './trail.js';
 import {
   loadConfig, safeApiBase, registerPlayer, issueRun, submitRun,
   fetchBoard, secondsLabel, NAME_RE,
@@ -32,16 +33,16 @@ class Game {
     this.alpha = 1;
     this.acc = 0;
     this.last = 0;
-    this.target = { x: 0, y: -3500 };
+    this.trail = new Trail();          // breadcrumb path the cat is committed to
+    this.cursor = { x: 0, y: -3500 };  // where the pointer is drawing
     this.jumpPending = false;
     this.keys = new Set();
-    this.kbSteer = false;
     this.touchId = null;
-    this.heading = { x: 0, y: 1 };
     this.stride = 0;
     this.visualTime = 0;
     this.pulse = 0;
     this.deathAt = 0;
+    this.hitFlash = 0;
     this.lastScrollDelta = 0;
     this.cue = { text: '', until: 0 };
     this.attract = true;
@@ -112,7 +113,8 @@ class Game {
     this.attractSeed = (this.attractSeed * 1103515245 + 12345) >>> 0;
     this.sim.reset(this.handle, this.attractSeed || 1);
     this.prev = this.curr = this.sim.snapshot(this.handle);
-    this.target = { x: 0, y: -3500 };
+    this.trail.reset(0, -3500);
+    this.cursor = { x: 0, y: -3500 };
   }
 
   startPlay({ mode, seed, ranked = null }) {
@@ -125,12 +127,12 @@ class Game {
     this.submitResult = null;
     this.sim.reset(this.handle, seed >>> 0);
     this.prev = this.curr = this.sim.snapshot(this.handle);
-    this.target = { x: 0, y: -3500 };
+    this.trail.reset(0, -3500);
+    this.cursor = { x: 0, y: -3500 };
     this.jumpPending = false;
     this.touchId = null;
-    this.kbSteer = false;
     this.keys.clear();
-    this.heading = { x: 0, y: 1 };
+    this.hitFlash = 0;
     this.stride = 0;
     this.acc = 0;
     this.interrupted = false;
@@ -173,6 +175,16 @@ class Game {
   }
 
   setMenuStatus(text) { $('menu-status').textContent = text || ''; }
+
+  // A hit costs one of nine lives (value = lives remaining). The final hit
+  // is handled by onDeath() via the dead flag.
+  onCrash(livesLeft) {
+    if (livesLeft <= 0) return;
+    this.hitFlash = 1;
+    this.pulse = 1;
+    this.sfx.hit();
+    this.setCue(livesLeft === 1 ? 'LAST LIFE — make it count' : `HIT — ${livesLeft} LIVES LEFT`, 2.2);
+  }
 
   onDeath() {
     this.deathAt = this.visualTime;
@@ -258,7 +270,6 @@ class Game {
     this.prev = this.curr;
     this.touchId = null;
     this.jumpPending = false;
-    this.kbSteer = false;
     $('pause-reason').textContent = reason || 'Paused. Resume when ready.';
     this.showScreen('pause');
   }
@@ -273,6 +284,10 @@ class Game {
     this.interrupted = false;
     this.acc = 0;
     this.prev = this.curr;
+    // The cursor may have moved while paused: restart the trail at the walker
+    // so the cat never sprints along a stale path on resume.
+    this.cursor = { x: Math.round(this.trail.x), y: Math.round(this.trail.y) };
+    this.trail.reset(this.cursor.x, this.cursor.y);
     this.showScreen('running');
   }
 
@@ -303,6 +318,7 @@ class Game {
       this.alpha = this.screen === 'running' ? Math.min(1, this.acc / TICK) : 1;
       this.visualTime += dt;
       this.pulse = Math.max(0, this.pulse - dt * 2.5);
+      this.hitFlash = Math.max(0, this.hitFlash - dt * 1.8);
     } else if (this.screen === 'menu' && this.attract) {
       // Attract mode: the city scrolls behind the menu with a wandering cat.
       this.acc += Math.min(dt, 0.1);
@@ -320,35 +336,38 @@ class Game {
       this.alpha = 1;
       this.visualTime += dt;
     }
-    this.render();
+    this.render(dt);
     this.updateHud();
     requestAnimationFrame((t) => this.frame(t));
   }
 
   stepOnce() {
     const p = this.curr.player;
-    let tx = this.target.x, ty = this.target.y;
-    // Keyboard steering alternative (mirrors ANightshiftController).
+    // Keyboard draws the trail too: the cursor cruises at fixed speed.
     const kx = (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) -
                (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0);
     const ky = (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) -
                (this.keys.has('s') || this.keys.has('arrowdown') ? 1 : 0);
     if (kx !== 0 || ky !== 0) {
       const n = Math.hypot(kx, ky);
-      tx = clampInt(p.x + (kx / n) * 2400, -8400, 8400);
-      ty = clampInt(p.y + (ky / n) * 2400, -6500, 6500);
-      this.kbSteer = true;
-    } else if (this.kbSteer) {
-      tx = p.x; ty = p.y;
-      this.kbSteer = false;
+      this.cursor.x = clampInt(this.cursor.x + (kx / n) * 360, -8400, 8400);
+      this.cursor.y = clampInt(this.cursor.y + (ky / n) * 360, -6500, 6500);
     }
-    // While airborne on touch, the aim target stays near the cat.
+    // While airborne on touch the finger is up, so the cursor cannot wander:
+    // the drawn path stays committed.
     if (this.touchId !== null && p.airborne) {
-      const dx = tx - p.x, dy = ty - p.y;
+      const dx = this.cursor.x - this.trail.x, dy = this.cursor.y - this.trail.y;
       const d = Math.hypot(dx, dy);
-      if (d > 1400) { tx = clampInt(p.x + (dx / d) * 1400, -8400, 8400); ty = clampInt(p.y + (dy / d) * 1400, -6500, 6500); }
+      if (d > 1400) {
+        this.cursor.x = clampInt(this.trail.x + (dx / d) * 1400, -8400, 8400);
+        this.cursor.y = clampInt(this.trail.y + (dy / d) * 1400, -6500, 6500);
+      }
     }
-    this.target.x = tx; this.target.y = ty;
+    // The walker runs the drawn trail at chase speed; the cat chases the
+    // walker and can never teleport to the cursor.
+    this.trail.push(this.cursor.x, this.cursor.y);
+    const w = this.trail.advance(TRAIL_WALK_SPEED);
+    const tx = Math.round(w.x), ty = Math.round(w.y);
     const jump = this.jumpPending;
     this.jumpPending = false; // edge: exactly one tick, like ConsumeInput
     this.prev = this.curr;
@@ -357,10 +376,6 @@ class Game {
     const side = this.curr.player.x - this.prev.player.x;
     this.lastScrollDelta = this.curr.distance - this.prev.distance;
     this.stride += TICK * Math.min(4, Math.max(0, Math.hypot(fwd, side) / 65)) * 13;
-    if (p.vx !== 0 || p.vy !== 0) {
-      const s = Math.hypot(p.vx, p.vy);
-      this.heading = { x: p.vx / s, y: p.vy / s };
-    }
     for (const e of this.curr.events) this.onEvent(e);
     if (this.curr.dead) this.onDeath();
   }
@@ -381,20 +396,22 @@ class Game {
         this.sfx.tier();
         this.setCue('TRAFFIC INTENSIFYING', 2);
         break;
-      case EventKind.Crash: break; // handled by onDeath
+      case EventKind.Crash: this.onCrash(e.value); break;
     }
     this.pulse = 1;
   }
 
   // --- rendering / HUD ----------------------------------------------------
-  render() {
+  render(dt) {
     if (!this.curr) return;
+    const running = this.screen === 'running';
     this.renderer.render({
       prev: this.prev, curr: this.curr, alpha: this.alpha,
-      targetX: this.screen === 'running' ? this.target.x : 0,
-      targetY: this.screen === 'running' ? this.target.y : -3500,
+      cursorX: running ? this.cursor.x : 0,
+      cursorY: running ? this.cursor.y : -3500,
+      trailDots: running ? this.trail.dots() : [],
       visualTime: this.visualTime, pulse: this.pulse,
-      stride: this.stride, scrollDelta: this.lastScrollDelta,
+      stride: this.stride, hitFlash: this.hitFlash, dt: dt || 0,
       deathAt: this.deathAt, reducedMotion: this.reducedMotion,
     });
   }
@@ -406,6 +423,8 @@ class Game {
       `NIGHTSHIFT ${c.score.toLocaleString()} PTS ×${c.combo}`;
     $('hud-sub').textContent =
       `${secondsLabel(c.tick)} • ${this.renderer.phaseName(c.tick)}`;
+    const lives = Math.max(0, Math.min(9, c.lives ?? 9));
+    $('hud-lives').textContent = '♥'.repeat(lives) + '♡'.repeat(9 - lives);
     let cue = this.cue.text;
     if (!cue || this.visualTime > this.cue.until) {
       const p = c.player;
@@ -431,9 +450,8 @@ class Game {
 
   aimAt(clientX, clientY) {
     const w = this.screenToWorld(clientX, clientY);
-    this.target.x = w.x;
-    this.target.y = w.y;
-    this.kbSteer = false;
+    this.cursor.x = w.x;
+    this.cursor.y = w.y;
   }
 
   focusLost() {
@@ -478,10 +496,7 @@ class Game {
       if (e.pointerId !== this.touchId) return;
       this.touchId = null;
       if (this.screen !== 'running') return;
-      // Release-to-jump with heading continuation (mirrors TouchEnd).
-      const p = this.curr.player;
-      this.target.x = clampInt(p.x + this.heading.x * 1800, -8400, 8400);
-      this.target.y = clampInt(p.y + this.heading.y * 1800, -6500, 6500);
+      // Release-to-jump. The drawn trail stays committed while airborne.
       this.jumpPending = true;
     };
     canvas.addEventListener('pointerup', endTouch);

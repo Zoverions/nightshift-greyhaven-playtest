@@ -84,6 +84,11 @@ export class Sfx {
     this.noise({ dur: 0.5, gain: 0.4, lowpass: 900 });
     this.tone({ freq: 160, freqEnd: 40, dur: 0.45, type: 'sawtooth', gain: 0.22 });
   }
+  hit() {
+    // a lost life: a hard thud, lighter than the final crash
+    this.noise({ dur: 0.25, gain: 0.32, lowpass: 700 });
+    this.tone({ freq: 220, freqEnd: 70, dur: 0.28, type: 'sawtooth', gain: 0.18 });
+  }
   tier() {
     this.tone({ freq: 440, dur: 0.1, type: 'triangle', gain: 0.2 });
     this.tone({ freq: 660, dur: 0.12, type: 'triangle', gain: 0.2, delay: 0.09 });
