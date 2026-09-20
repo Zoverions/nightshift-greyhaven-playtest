@@ -269,25 +269,33 @@ export class Renderer {
     if (this.scentHist.length > 90) this.scentHist.shift();
 
     // backdrop: undercity + road + sidewalks
+    // Portrait phones see a much taller view than these landscape-tuned
+    // spans; extend every scrolling layer to cover the view so no empty
+    // band appears. In landscape extraH is 0 and nothing changes.
+    const extraH = Math.max(0, v.viewH - 18000);
+    const spanH = 17400 + extraH;
+    const yCull = 10500 + extraH;
     this.quad(this.texBox, false, v.cx, v.cy, v.viewW * 2, v.viewH * 2, 0, 0.016, 0.03, 0.05, 1);
-    this.quad(this.texBox, false, 0, 400, 18000, 17400, 0, this.road[0], this.road[1], this.road[2], 1);
+    this.quad(this.texBox, false, 0, 400, 18000, spanH, 0, this.road[0], this.road[1], this.road[2], 1);
     for (const side of [-1, 1]) {
-      this.quad(this.texBox, false, side * 9900, 400, 1800, 17400, 0, 0.10, 0.13, 0.17, 1);
+      this.quad(this.texBox, false, side * 9900, 400, 1800, spanH, 0, 0.10, 0.13, 0.17, 1);
     }
     // lane dashes scroll with distance
     const laneOff = scroll % 1800;
-    for (let i = -6; i <= 6; i++) {
+    const laneN = Math.ceil(yCull / 1800) + 1;
+    for (let i = -laneN; i <= laneN; i++) {
       for (const lane of [-5000, 0, 5000]) {
         const y = i * 1800 - laneOff;
-        if (y < -8000 || y > 9000) continue;
+        if (y < -yCull || y > yCull) continue;
         this.quad(this.texBox, false, lane, y, 90, 420, 0, 0.35, 0.42, 0.5, 0.5);
       }
     }
     // manholes + neon puddles on the road, scrolling with distance
     const propOff = scroll % 2600;
-    for (let i = -4; i <= 4; i++) {
+    const propN = Math.ceil(yCull / 2600) + 1;
+    for (let i = -propN; i <= propN; i++) {
       const y = i * 2600 - propOff;
-      if (y < -8000 || y > 9000) continue;
+      if (y < -yCull || y > yCull) continue;
       const mx = ((i * 5303) % 12000) - 6000;
       this.quad(this.texDisc, false, mx, y, 520, 380, 0, 0.05, 0.06, 0.09, 1);
       this.quad(this.texDisc, false, mx, y, 380, 260, 0, 0.09, 0.11, 0.15, 1);
@@ -301,9 +309,10 @@ export class Renderer {
     {
       const par = this.skyParallax || 0.35;
       const skyOff = (scroll * par) % 6000;
-      for (let i = -3; i <= 3; i++) {
+      const skyN = Math.ceil(yCull / 6000) + 1;
+      for (let i = -skyN; i <= skyN; i++) {
         const y = i * 6000 - skyOff;
-        if (y < -9500 || y > 10500) continue;
+        if (y < -yCull || y > yCull) continue;
         for (const side of [-1, 1]) {
           this.quad(this.texBox, false, side * 17000, y, 2500, 5600, 0, 0.045, 0.05, 0.11, 0.92);
           this.quad(this.texDisc, false, side * 15900, y + 1100, 190, 190, 0,
@@ -312,15 +321,16 @@ export class Renderer {
       }
       // Kestrel Span cables: long faint diagonals crossing the far field
       const cableOff = (scroll * par) % 5200;
-      for (let cI = 0; cI < 3; cI++) {
+      const cabN = Math.ceil(yCull / 5200) + 1;
+      for (let cI = 0; cI < cabN; cI++) {
         const y = cI * 5200 - cableOff - 5600;
-        if (y < -9500 || y > 10500) continue;
+        if (y < -yCull || y > yCull) continue;
         this.quad(this.texBox, true, 0, y, 30000, 22, 1.32, 0.85, 0.3, 0.75, 0.09);
         this.quad(this.texBox, true, 0, y + 260, 30000, 14, 1.32, 0.35, 0.8, 1, 0.07);
       }
       // Calder House spire: a thin silhouette with a slow violet beacon
       const spireY = 4200 - ((scroll * par) % 12000);
-      if (spireY > -9500 && spireY < 10500) {
+      if (spireY > -yCull && spireY < yCull) {
         this.quad(this.texBox, false, -15600, spireY, 420, 4400, 0, 0.07, 0.06, 0.16, 0.95);
         const sblink = 0.35 + 0.65 * Math.max(0, Math.sin(f.visualTime * 1.6 + 2.1));
         this.glow(-15600, spireY + 2200, 420 * sblink + 120, [0.65, 0.35, 1], 0.5 * sblink);
@@ -330,11 +340,12 @@ export class Renderer {
     }
     // buildings, windows, neon bollards scroll past on both sides
     const bOff = scroll % this.spacing;
+    const bN = Math.ceil(yCull / this.spacing) + 1;
     for (const side of [-1, 1]) {
-      for (let i = -4; i <= 4; i++) {
+      for (let i = -bN; i <= bN; i++) {
         const y = i * this.spacing - bOff;
-        if (y < -9000 || y > 10000) continue;
-        const bh = 2600 + ((i + 4) % 3) * 900;
+        if (y < -yCull || y > yCull) continue;
+        const bh = 2600 + ((((i + 4) % 3) + 3) % 3) * 900;
         const bx = side * 13300;
         this.quad(this.texBox, false, bx, y, 3520, 4300, 0, this.building[0], this.building[1], this.building[2], 1);
         this.quad(this.texBox, false, bx, y + 240 + bh * 0.12, 3300, 3800, 0,

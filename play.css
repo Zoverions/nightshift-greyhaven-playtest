@@ -56,6 +56,8 @@ body { margin: 0; overflow: hidden; background: #050b10; }
 }
 .menu-panel h1 {
   font-size: clamp(2.6rem, 9vw, 4.6rem); margin-bottom: 10px;
+  max-width: none; /* nightshift.css caps h1 at 8ch; the full title must fit or the gradient has nothing to paint */
+  letter-spacing: 0; /* -.035em global tracking corrupts gradient-title glyphs in software rasterizers */
   background: linear-gradient(100deg, var(--cyan-deep), var(--cyan) 40%, var(--magenta));
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 26px rgba(231, 74, 209, .25));
