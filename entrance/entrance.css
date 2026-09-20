@@ -1,0 +1,11 @@
+.nightshift-entrance { --ns-cyan: #72f7e8; --ns-amber: #ffb54a; display: inline-flex; align-items: center; gap: 10px; margin-inline-start: auto; color: inherit; }
+.nightshift-entrance[hidden] { display: none !important; }
+.nightshift-entrance__dial { position: relative; width: 42px; height: 42px; flex: 0 0 42px; padding: 0; border: 1px solid color-mix(in srgb, var(--ns-cyan) 54%, transparent); border-radius: 50%; background: rgba(4,15,20,.58); color: var(--ns-cyan); cursor: grab; touch-action: none; }
+.nightshift-entrance__dial:active { cursor: grabbing; }
+.nightshift-entrance__dial:focus-visible { outline: 2px solid var(--ns-amber); outline-offset: 4px; }
+.nightshift-entrance__ticks { position: absolute; inset: 4px; border-radius: 50%; background: repeating-conic-gradient(from 0deg, currentColor 0 1deg, transparent 1deg 30deg); mask: radial-gradient(circle, transparent 0 12px, #000 12px 14px, transparent 14px); opacity: .65; }
+.nightshift-entrance__hand { position: absolute; width: 1px; height: 13px; left: calc(50% - .5px); top: 7px; background: var(--ns-amber); transform-origin: 50% 100%; transform: rotate(28deg); box-shadow: 0 0 8px var(--ns-amber); }
+.nightshift-entrance__hub { position: absolute; width: 5px; height: 5px; left: calc(50% - 2.5px); top: calc(50% - 2.5px); background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+.nightshift-entrance__clue { max-width: 16ch; font-size: .7rem; line-height: 1.25; letter-spacing: .04em; opacity: .68; }
+.nightshift-entrance--opening .nightshift-entrance__hand { transform: rotate(-332deg); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+@media (prefers-reduced-motion: reduce) { .nightshift-entrance--opening .nightshift-entrance__hand { transition: none; } }
