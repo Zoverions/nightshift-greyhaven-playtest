@@ -65,8 +65,11 @@ class Game {
     try {
       this.renderer = new Renderer(canvas);
     } catch (e) {
-      $('fatal').hidden = false;
-      $('fatal').textContent = 'This browser could not start WebGL2, which Nightshift needs to render the city.';
+      const fatal = $('fatal');
+      fatal.hidden = false;
+      fatal.dataset.handled = '1';
+      fatal.textContent = 'Nightshift needs WebGL2 to draw the city, and this browser could not provide it. ' +
+        'Turn on hardware acceleration in your browser settings (or try Chrome, Edge, or Firefox) and reload.';
       throw e;
     }
     try {
@@ -690,7 +693,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   game.init().catch((e) => {
     console.error(e);
-    $('fatal').hidden = false;
-    $('fatal').textContent = `Nightshift could not start: ${e.message}`;
+    const fatal = $('fatal');
+    if (!fatal.dataset.handled) {
+      fatal.hidden = false;
+      fatal.textContent = `Nightshift could not start: ${e.message}`;
+    }
   });
 });
