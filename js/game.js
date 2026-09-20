@@ -7,7 +7,7 @@
 // file contains no gameplay rules.
 
 import createSim from './sim.js';
-import { loadSim, EventKind, RULESET, TICK_RATE } from './ns.js';
+import { loadSim, EventKind, HazardKind, RULESET, TICK_RATE } from './ns.js';
 import { Renderer } from './renderer.js';
 import { Sfx } from './audio.js';
 import { Trail, TRAIL_WALK_SPEED } from './trail.js';
@@ -50,7 +50,7 @@ class Game {
     this.mode = 'practice'; // or 'ranked'
     this.ranked = null;     // { token, runId, name }
     this.pendingFrames = null;
-    this.submitState = 'idle'; // idle|submitting|accepted|failed|ineligible|local
+    this.submitState = 'idle'; // idle|submitting|accepted|rejected|failed|ineligible|local
     this.submitResult = null;
     this.apiBase = null;
     this.interrupted = false;
@@ -136,7 +136,7 @@ class Game {
     this.stride = 0;
     this.acc = 0;
     this.interrupted = false;
-    this.setCue('SHIFT STARTED — find your line', 2);
+    this.setCue("GÖDEL'S NIGHT ROUTE — nine credentials. Find your line.", 2);
     this.sfx.start();
     this.showScreen('running');
   }
@@ -176,23 +176,28 @@ class Game {
 
   setMenuStatus(text) { $('menu-status').textContent = text || ''; }
 
-  // A hit costs one of nine lives (value = lives remaining). The final hit
-  // is handled by onDeath() via the dead flag. The crash also starts the
-  // core's bonk recovery (dizzy pause, then auto-run to the hole).
-  onCrash(livesLeft) {
+  // A hit costs one of nine identity credentials (value = credentials
+  // remaining). The final hit is handled by onDeath() via the dead flag.
+  // The crash also starts the core's bonk recovery (dizzy pause, then
+  // auto-run to the hole).
+  onCrash(livesLeft, rook = false) {
     if (livesLeft <= 0) return;
     this.hitFlash = 1;
     this.pulse = 1;
     this.sfx.hit();
     this.sfx.dizzy();
-    this.setCue(livesLeft === 1 ? 'BONK! — LAST LIFE — dizzy… finding the gap'
-                                : `BONK! — ${livesLeft} LIVES LEFT — dizzy… finding the gap`, 2.6);
+    if (rook) {
+      this.setCue("YOU CROSSED ROOK'S SCENT LINE — incident filed.", 2.6);
+      return;
+    }
+    this.setCue(livesLeft === 1 ? 'LAST CREDENTIAL — the gate asked. Wrong answer.'
+                                : `THE GATE ASKED. WRONG ANSWER — ${livesLeft} CREDENTIALS LEFT — dizzy… finding the gap`, 2.6);
   }
 
   onDeath() {
     this.deathAt = this.visualTime;
     this.sfx.crash();
-    this.setCue('COURIER DOWN — one more shift?', 3);
+    this.setCue('CREDENTIAL EXPIRED — Gödel is now an unresolved biological actor.', 3);
     if (this.curr.score > this.best) {
       this.best = this.curr.score;
       try { localStorage.setItem('nightshift-best', String(this.best)); } catch {}
@@ -221,7 +226,9 @@ class Game {
       this.submitResult = result;
       this.submitState = 'accepted';
     } catch (e) {
-      this.submitState = 'failed';
+      // The service answers its one-bit question with VERIFIED: YES/NO; a
+      // rejection is an answer, not a transport failure.
+      this.submitState = e.message === 'submission rejected' ? 'rejected' : 'failed';
       this.submitError = e.message;
     }
     this.renderOver();
@@ -237,7 +244,7 @@ class Game {
       this.submitResult = result;
       this.submitState = 'accepted';
     } catch (e) {
-      this.submitState = 'failed';
+      this.submitState = e.message === 'submission rejected' ? 'rejected' : 'failed';
       this.submitError = e.message;
     }
     this.renderOver();
@@ -246,21 +253,27 @@ class Game {
   renderOver() {
     const c = this.curr;
     $('over-stats').textContent =
-      `${c.score.toLocaleString()} points • ${secondsLabel(c.tick)} • ${c.pickupsCollected} signals • ${c.nearMisses} close calls`;
+      `${c.score.toLocaleString()} points • ${secondsLabel(c.tick)} • ${c.pickupsCollected} scent cards • ${c.nearMisses} close calls`;
     const el = $('over-status');
     let text = '';
     if (this.mode === 'practice') {
-      text = `Practice result — stored locally, never uploaded. Personal best: ${this.best.toLocaleString()}.`;
+      text = `Local case file — kept in Mara's cabinet, never uploaded. Best: ${this.best.toLocaleString()}.`;
     } else if (this.submitState === 'submitting') {
-      text = 'Uploading the run for verification…';
+      text = 'Filing the case with Mara…';
     } else if (this.submitState === 'accepted' && this.submitResult) {
-      text = `Verified by the city: ${this.submitResult.score.toLocaleString()} points — rank #${this.submitResult.rank} of the shared board.`;
+      text = `VERIFIED: YES — ${this.submitResult.score.toLocaleString()} points filed, rank #${this.submitResult.rank} of the shared board.`;
+    } else if (this.submitState === 'rejected') {
+      text = 'VERIFIED: NO — Mara rejected the file.';
     } else if (this.submitState === 'failed') {
-      text = `Upload failed (${this.submitError || 'network'}). Your run is kept — retry the same upload.`;
+      text = `Filing failed (${this.submitError || 'network'}). Your case is kept — retry the same file.`;
     } else if (this.submitState === 'ineligible') {
-      text = 'Upload limit reached — kept as a local result.';
+      text = 'File limit reached — kept as a local case.';
     }
     el.textContent = text;
+    $('over-case').textContent =
+      this.submitState === 'accepted' && this.submitResult ? `#${this.submitResult.rank}` : '#LOCAL';
+    $('over-verdict').textContent =
+      this.submitState === 'accepted' ? 'YES' : this.submitState === 'rejected' ? 'NO' : '—';
     $('retry-upload-btn').hidden = this.submitState !== 'failed';
     $('over-again').textContent = this.mode === 'ranked' ? 'ANOTHER RANKED SHIFT' : 'RUN IT AGAIN';
   }
@@ -273,7 +286,7 @@ class Game {
     this.prev = this.curr;
     this.touchId = null;
     this.jumpPending = false;
-    $('pause-reason').textContent = reason || 'Paused. Resume when ready.';
+    $('pause-reason').textContent = reason || 'DARK INTERVAL — unretained. The city keeps no record of this minute.';
     this.showScreen('pause');
   }
 
@@ -408,7 +421,7 @@ class Game {
     switch (e.kind) {
       case EventKind.Pickup:
         this.sfx.pickup(this.curr.combo);
-        this.setCue(`SIGNAL +${e.value.toLocaleString()}`);
+        this.setCue(`SCENT-CARD FILED +${e.value.toLocaleString()}`);
         break;
       case EventKind.NearMiss:
         this.sfx.nearMiss();
@@ -418,9 +431,16 @@ class Game {
       case EventKind.Land: this.sfx.land(); break;
       case EventKind.Tier:
         this.sfx.tier();
-        this.setCue('TRAFFIC INTENSIFYING', 2);
+        this.setCue('THE CITY ASKS MORE QUESTIONS', 2);
         break;
-      case EventKind.Crash: this.onCrash(e.value); break;
+      case EventKind.Crash: {
+        // Rook is a person, not a wall: check whether the crash point sits
+        // on a dog hazard before choosing the message.
+        const rook = this.curr.hazards.some((h) =>
+          h.kind === HazardKind.Dog && Math.hypot(h.x - e.x, h.y - e.y) < 1600);
+        this.onCrash(e.value, rook);
+        break;
+      }
     }
     this.pulse = 1;
   }
@@ -451,13 +471,13 @@ class Game {
     $('hud-sub').textContent =
       `${secondsLabel(c.tick)} • ${this.renderer.phaseName(c.tick)}`;
     const lives = Math.max(0, Math.min(9, c.lives ?? 9));
-    $('hud-lives').textContent = '♥'.repeat(lives) + '♡'.repeat(9 - lives);
+    $('hud-credentials').textContent = `CREDENTIALS ${lives}/9`;
     let cue = this.cue.text;
     if (!cue || this.visualTime > this.cue.until) {
       const p = c.player;
       cue = p.airborne ? 'AIRBORNE' : p.jumpCooldown > 0 ? 'LANDING — jump recharging' : 'JUMP READY';
       if (this.mode === 'ranked' && !this.sim.eligible(this.handle)) {
-        cue = 'Upload limit reached — continuing as a local result';
+        cue = 'File limit reached — continuing as a local case';
       }
     }
     $('hud-cue').textContent = cue;
@@ -486,7 +506,7 @@ class Game {
     this.jumpPending = false;
     if (this.screen === 'running') {
       this.interrupted = true;
-      this.pause('Input paused after focus loss. Resume when ready.');
+      this.pause('DARK INTERVAL — unretained. The city keeps no record of this minute.');
     }
   }
 
@@ -539,7 +559,7 @@ class Game {
         if (this.screen === 'running') { this.jumpPending = true; this.sfx.ensure(); }
         else if (this.screen === 'menu') void this.startPractice();
       } else if (k === 'escape') {
-        if (this.screen === 'running') this.pause('Paused. Resume when ready.');
+        if (this.screen === 'running') this.pause('DARK INTERVAL — unretained. The city keeps no record of this minute.');
         else if (this.screen === 'pause') this.resume();
       } else if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
         this.keys.add(k);
@@ -571,7 +591,7 @@ class Game {
     });
     $('retry-upload-btn').addEventListener('click', () => void this.retrySubmit());
     $('pause-btn').addEventListener('click', () => {
-      if (this.screen === 'running') this.pause('Paused. Resume when ready.');
+      if (this.screen === 'running') this.pause('DARK INTERVAL — unretained. The city keeps no record of this minute.');
     });
     $('sound-btn').addEventListener('click', () => {
       const on = this.sfx.toggle();
@@ -598,7 +618,7 @@ class Game {
       const body = $('board-entries');
       body.replaceChildren();
       if (!entries.length) {
-        state.textContent = 'No ranked runs yet. The first signal is still waiting.';
+        state.textContent = 'No cases filed yet. The first file is still waiting.';
         return;
       }
       for (const e of entries) {
@@ -626,7 +646,7 @@ class Game {
       state.hidden = true;
     } catch {
       state.hidden = false;
-      state.textContent = 'The shared scores could not be reached.';
+      state.textContent = 'The case files could not be reached.';
     }
   }
 

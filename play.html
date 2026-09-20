@@ -16,7 +16,7 @@
     <div id="hud-left">
       <div id="hud-score">0</div>
       <div id="hud-sub">score</div>
-      <div id="hud-lives" aria-label="lives remaining">♥♥♥♥♥♥♥♥♥</div>
+      <div id="hud-credentials" aria-label="credentials remaining">CREDENTIALS 9/9</div>
     </div>
     <div id="hud-mid">
       <div id="hud-tier"></div>
@@ -30,10 +30,12 @@
 
   <div id="screen-menu" class="screen" hidden>
     <div class="menu-panel" role="dialog" aria-labelledby="menu-title">
-      <p class="eyebrow">ZOVERIONS / NIGHTSHIFT</p>
-      <h1 id="menu-title">GREY<span>HAVEN</span></h1>
+      <p class="eyebrow">ZOVERIONS</p>
+      <p class="kicker">A GREYHAVEN MYSTERY</p>
+      <h1 id="menu-title">NIGHTSHIFT: <span>GREYHAVEN</span></h1>
+      <p class="epigraph">"Ask for what you need — and be prepared to explain why you need it."</p>
       <p id="menu-best" class="menu-best"></p>
-      <p class="lede">Dodge the rows, thread the barriers, take the high wire. Sixty seconds of rain per shift if you're good.</p>
+      <p class="lede">Gödel's night route. Nine credentials. Don't cross Rook's line.</p>
       <div class="controls-help">
         <span><b>Mouse</b> follows · <b>click / Space</b> jumps</span>
         <span><b>Touch</b> drag to move · lift to drift &amp; jump</span>
@@ -48,17 +50,17 @@
       </div>
       <p id="menu-status" class="menu-status" role="status"></p>
       <div class="menu-row">
-        <button id="board-btn" class="ghost-button" type="button" aria-expanded="false">Hall of fame</button>
+        <button id="board-btn" class="ghost-button" type="button" aria-expanded="false">Case files</button>
       </div>
       <div id="board-panel" class="board-panel" hidden>
         <div class="panel-heading">
-          <h2>Hall of fame</h2>
+          <h2>Case files</h2>
           <span class="status-pip" aria-hidden="true"></span>
         </div>
-        <p class="board-rule">TOP 50 · RANKED RUNS · SERVER VERIFIED</p>
+        <p class="board-rule">TOP 50 · RANKED CASES · VERIFIED BY THE CITY</p>
         <div id="board-state" class="board-state">Loading the board…</div>
         <div class="board-scroll" id="board-scroll" hidden><table id="board-table">
-          <thead><tr><th>Rank</th><th>Name</th><th>Score</th><th>Time</th><th>Pickups</th><th>Near misses</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Name</th><th>Score</th><th>Time</th><th>Scent cards</th><th>Close calls</th></tr></thead>
           <tbody id="board-entries"></tbody>
         </table></div>
       </div>
@@ -70,7 +72,7 @@
   <div id="screen-pause" class="screen" hidden>
     <div class="menu-panel" role="dialog" aria-labelledby="pause-title">
       <p class="eyebrow">NIGHTSHIFT</p>
-      <h1 id="pause-title">SHIFT <span>PAUSED</span></h1>
+      <h1 id="pause-title">DARK <span>INTERVAL</span></h1>
       <p id="pause-reason" class="menu-best"></p>
       <div class="menu-row">
         <button id="resume-btn" class="enter-button" type="button">Resume shift</button>
@@ -80,9 +82,11 @@
   </div>
 
   <div id="screen-over" class="screen" hidden>
-    <div class="menu-panel" role="dialog" aria-labelledby="over-title">
-      <p class="eyebrow">NIGHTSHIFT</p>
-      <h1 id="over-title">END OF <span>SHIFT</span></h1>
+    <div class="menu-panel casefile" role="dialog" aria-labelledby="over-title">
+      <p class="eyebrow">MARA IQBAL — CASE FILE</p>
+      <h1 id="over-title">CREDENTIAL <span>EXPIRED</span></h1>
+      <p class="case-line">Gödel is now an unresolved biological actor.</p>
+      <p class="case-stamp">CASE FILE <span id="over-case">#—</span> · VERIFIED: <span id="over-verdict">—</span></p>
       <p id="over-stats" class="menu-best"></p>
       <p id="over-status" class="menu-status" role="status"></p>
       <div class="menu-row">
@@ -91,7 +95,7 @@
         <button id="over-menu-btn" class="ghost-button" type="button">Menu</button>
       </div>
       <div class="menu-row">
-        <button id="retry-upload-btn" class="ghost-button" type="button" hidden>Retry upload</button>
+        <button id="retry-upload-btn" class="ghost-button" type="button" hidden>RETRY FILE CASE</button>
       </div>
     </div>
   </div>

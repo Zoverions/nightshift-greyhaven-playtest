@@ -123,6 +123,28 @@ export class Renderer {
       }
       g.closePath(); g.fill();
     });
+    // Scent card: vellum-cream card with three wavy scent lines baked in.
+    // Tinted with white at draw time so the baked colors survive.
+    this.texScentCard = makeTex(gl, 96, (g, s) => {
+      g.fillStyle = '#f3e8cd';
+      g.beginPath(); g.roundRect(8, 8, s - 16, s - 16, 10); g.fill();
+      g.strokeStyle = '#8a6b3f'; g.lineWidth = 5; g.lineCap = 'round';
+      for (let r = 0; r < 3; r++) {
+        g.beginPath();
+        const y0 = s * 0.32 + r * s * 0.18;
+        for (let x = 22; x <= s - 22; x += 4) {
+          const y = y0 + Math.sin(x * 0.24 + r * 1.9) * 7;
+          if (x === 22) g.moveTo(x, y); else g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+    });
+
+    // Rolling history of the cat's world position, used for Rook's scent
+    // ribbon. The sim's exact 40-tick-old scent positions are not exposed
+    // by the snapshot, so this is a renderer-side approximation at the
+    // render rate (~60fps, matching the 60Hz tick).
+    this.scentHist = [];
 
     this.vbo = gl.createBuffer();
     this.batches = new Map();
@@ -134,9 +156,9 @@ export class Renderer {
       roadColor: '1B1030', buildingColor: '1C2942', windowColor: '70E8CF',
       buildingSpacingCm: 440, rainEnabled: true,
       phases: [
-        { name: 'SERVICE ROADS', accent: '66E3C4' },
-        { name: 'NEON MARKET', accent: 'E985E5' },
-        { name: 'FREIGHT CROSSING', accent: 'F5B85A' },
+        { name: 'HARMONY COMMON', accent: '66E3C4' },
+        { name: 'KESTREL SPAN', accent: 'E985E5' },
+        { name: 'NEON MARKET', accent: 'F5B85A' },
         { name: 'BLACKOUT PULSE', accent: '9BADF7' },
       ],
     });
@@ -148,9 +170,13 @@ export class Renderer {
     this.windowBase = hexRgb(d.windowColor || '70E8CF');
     this.spacing = (d.buildingSpacingCm || 440) * 10;
     this.rainEnabled = d.rainEnabled !== false;
-    this.phases = (d.phases && d.phases.length ? d.phases : [{ name: 'SERVICE ROADS', accent: '66E3C4' }])
+    this.phases = (d.phases && d.phases.length ? d.phases : [{ name: 'HARMONY COMMON', accent: '66E3C4' }])
       .map((p) => ({ name: p.name, accent: hexRgb(p.accent) }));
     this.phaseTicks = d.phaseDurationTicks || 3600;
+    // Far-skyline parallax: a value in (0,1]; slower than the near field.
+    const sky = d.skyline || {};
+    this.skyParallax = typeof sky.parallax === 'number' && sky.parallax > 0 && sky.parallax <= 1
+      ? sky.parallax : 0.35;
   }
 
   phaseName(tick) { return this.phases[Math.floor(tick / this.phaseTicks) % this.phases.length].name; }
@@ -236,6 +262,11 @@ export class Renderer {
     const pz = prev.player.z + (curr.player.z - prev.player.z) * alpha;
     const scroll = prev.distance + (curr.distance - prev.distance) * alpha;
     const jump = pz / 2200;
+    this.reducedMotion = !!f.reducedMotion;
+
+    // Feed the scent history: Rook's ribbon reads the ~40-frame-old slot.
+    this.scentHist.push({ x: px, y: py });
+    if (this.scentHist.length > 90) this.scentHist.shift();
 
     // backdrop: undercity + road + sidewalks
     this.quad(this.texBox, false, v.cx, v.cy, v.viewW * 2, v.viewH * 2, 0, 0.016, 0.03, 0.05, 1);
@@ -263,6 +294,39 @@ export class Renderer {
       const px2 = ((i * 9171) % 14000) - 7000;
       this.glow(px2, y + 900, 900, accent, 0.10);
       this.quad(this.texDisc, false, px2, y + 900, 620, 300, 0.2, 0.10, 0.14, 0.2, 0.8);
+    }
+    // far skyline: Harmony Common rooftops, Kestrel Span cables, and the
+    // distant Calder House spire. Parallaxed slower than the near field so
+    // the depth reads; silhouettes stay dim so the play field stays legible.
+    {
+      const par = this.skyParallax || 0.35;
+      const skyOff = (scroll * par) % 6000;
+      for (let i = -3; i <= 3; i++) {
+        const y = i * 6000 - skyOff;
+        if (y < -9500 || y > 10500) continue;
+        for (const side of [-1, 1]) {
+          this.quad(this.texBox, false, side * 17000, y, 2500, 5600, 0, 0.045, 0.05, 0.11, 0.92);
+          this.quad(this.texDisc, false, side * 15900, y + 1100, 190, 190, 0,
+            accent[0] * 0.45, accent[1] * 0.45, accent[2] * 0.45, 0.32);
+        }
+      }
+      // Kestrel Span cables: long faint diagonals crossing the far field
+      const cableOff = (scroll * par) % 5200;
+      for (let cI = 0; cI < 3; cI++) {
+        const y = cI * 5200 - cableOff - 5600;
+        if (y < -9500 || y > 10500) continue;
+        this.quad(this.texBox, true, 0, y, 30000, 22, 1.32, 0.85, 0.3, 0.75, 0.09);
+        this.quad(this.texBox, true, 0, y + 260, 30000, 14, 1.32, 0.35, 0.8, 1, 0.07);
+      }
+      // Calder House spire: a thin silhouette with a slow violet beacon
+      const spireY = 4200 - ((scroll * par) % 12000);
+      if (spireY > -9500 && spireY < 10500) {
+        this.quad(this.texBox, false, -15600, spireY, 420, 4400, 0, 0.07, 0.06, 0.16, 0.95);
+        const sblink = 0.35 + 0.65 * Math.max(0, Math.sin(f.visualTime * 1.6 + 2.1));
+        this.glow(-15600, spireY + 2200, 420 * sblink + 120, [0.65, 0.35, 1], 0.5 * sblink);
+        this.quad(this.texDisc, true, -15600, spireY + 2200, 130, 130, 0,
+          0.65, 0.35, 1, 0.8 * sblink);
+      }
     }
     // buildings, windows, neon bollards scroll past on both sides
     const bOff = scroll % this.spacing;
@@ -308,21 +372,42 @@ export class Renderer {
 
     // hazards (interpolated by id)
     const prevById = new Map(prev.hazards.map((h) => [h.id, h]));
+    // Gate edges: kind-0 span segments with no same-row neighbor on one
+    // side border an opening; those ends get the cyan permitted-passage
+    // glow, mid-span posts stay dim.
+    this.gateOpen = new Map();
+    {
+      const spans = curr.hazards.filter((h) => h.kind === 0);
+      for (const b of spans) {
+        let left = false, right = false;
+        for (const o of spans) {
+          if (o === b || Math.abs(o.y - b.y) > 600) continue;
+          const gap = Math.abs(o.x - b.x);
+          if (gap < (b.halfWidth + o.halfWidth) * 1.35) {
+            if (o.x < b.x) left = true; else right = true;
+          }
+        }
+        if (!left || !right) {
+          this.gateOpen.set(b.id, !left && !right ? 'both' : (!left ? 'left' : 'right'));
+        }
+      }
+    }
     for (const hz of curr.hazards) {
       const old = prevById.get(hz.id);
       const hx = old ? old.x + (hz.x - old.x) * alpha : hz.x;
       const hy = old ? old.y + (hz.y - old.y) * alpha : hz.y;
       this.drawHazard(hz, hx, hy, f.visualTime, accent);
     }
-    // signal pickups
+    // scent cards: vellum cards with a baked scent glyph, bobbing gently
     const prevPk = new Map(prev.pickups.map((p) => [p.id, p]));
     for (const p of curr.pickups) {
       const old = prevPk.get(p.id);
       const py2 = old ? old.y + (p.y - old.y) * alpha : p.y;
-      const rot = Math.PI / 4 + f.visualTime * 0.8;
-      this.glow(p.x, py2, 700, [0.35, 1, 0.75], 0.55);
-      this.quad(this.texBox, false, p.x, py2, 300, 300, rot, 0.4, 1, 0.78, 1);
-      this.quad(this.texBox, false, p.x, py2, 150, 150, rot, 0.85, 1, 0.9, 1);
+      const bob = f.reducedMotion ? 0 : Math.sin(f.visualTime * 2.2 + p.id * 1.7) * 70;
+      const cardY = py2 + bob;
+      const pulse = f.reducedMotion ? 0.5 : 0.4 + 0.15 * Math.sin(f.visualTime * 2.2 + p.id);
+      this.glow(p.x, cardY, 640, [0.95, 0.82, 0.55], pulse);
+      this.quad(this.texScentCard, false, p.x, cardY, 330, 330, 0, 1, 1, 1, 1);
     }
 
     if (!curr.dead || true) this.drawCat(px, py, pz, jump, f, accent);
@@ -413,30 +498,55 @@ export class Renderer {
     if (hy > 7000) edge = Math.max(0, (8500 - hy) / 1500);
     if (hy < -7000) edge = Math.max(0, (hy + 8000) / 1000);
     const cream = [0.96, 0.91, 0.78];
-    if (hz.kind === 4) { // Dog: a stray quadruped that runs the scent trail
-      const fur = [0.34, 0.25, 0.17], dark = [0.16, 0.11, 0.08];
-      this.glow(hx, hy, Math.max(w, d) * 0.85, [1, 0.2, 0.12], 0.35 * edge);
-      // legs
-      for (const lx of [-260, 260]) for (const ly of [-190, 190]) {
-        this.quad(this.texDisc, false, hx + lx, hy + ly, 170, 170, 0, dark[0], dark[1], dark[2], edge);
+    if (hz.kind === 4) { // Rook: the enhanced greyhound, a person reading old scent
+      const fur = [0.36, 0.39, 0.47], dark = [0.2, 0.22, 0.29];
+      this.glow(hx, hy, Math.max(w, d) * 0.85, [0.9, 0.35, 0.7], 0.22 * edge);
+      // scent ribbon: a faint fading line from the old scent position Rook
+      // is reading to his nose. The sim's exact 40-tick scent slot is not
+      // exposed, so the renderer holds ~40 frames of cat history instead.
+      const hist = this.scentHist;
+      if (hist.length > 40) {
+        const old = hist[hist.length - 41];
+        const nx = hx, ny = hy - 900;
+        const steps = 9;
+        for (let i = 0; i <= steps; i++) {
+          const tt = i / steps;
+          this.glow(old.x + (nx - old.x) * tt, old.y + (ny - old.y) * tt,
+            240, [0.55, 0.85, 1], 0.13 * (1 - tt * 0.55) * edge);
+        }
+        this.glow(old.x, old.y, 520, [0.55, 0.85, 1], 0.09 * edge);
       }
-      // body, head, snout (faces down-screen, toward the courier's scent)
-      this.quad(this.texDisc, false, hx, hy, 780, 600, 0, fur[0], fur[1], fur[2], edge);
-      this.quad(this.texDisc, false, hx, hy - 420, 400, 380, 0, fur[0] * 1.15, fur[1] * 1.15, fur[2] * 1.15, edge);
-      this.quad(this.texDisc, false, hx, hy - 640, 200, 220, 0, dark[0], dark[1], dark[2], edge);
-      // ears
+      // tucked legs: folded close, unhurried
+      for (const lx of [-150, 150]) for (const ly of [-150, 150]) {
+        this.quad(this.texDisc, false, hx + lx, hy + ly, 140, 140, 0, dark[0], dark[1], dark[2], edge);
+      }
+      // long lean body, tucked frame
+      this.quad(this.texDisc, false, hx, hy, 1020, 430, 0, fur[0], fur[1], fur[2], edge);
+      this.quad(this.texDisc, false, hx, hy + 40, 700, 330, 0, dark[0], dark[1], dark[2], 0.55 * edge);
+      // neck and long tapered head, nose to the old scent
+      this.quad(this.texDisc, false, hx, hy - 400, 300, 420, 0, fur[0] * 1.1, fur[1] * 1.1, fur[2] * 1.1, edge);
+      this.quad(this.texTri, false, hx, hy - 690, 230, 430, Math.PI, fur[0] * 1.1, fur[1] * 1.1, fur[2] * 1.1, edge);
+      this.quad(this.texDisc, false, hx, hy - 880, 110, 110, 0, dark[0], dark[1], dark[2], edge);
+      // swept-back ears
       for (const s of [-1, 1]) {
-        this.quad(this.texTri, false, hx + s * 170, hy - 560, 150, 260, s * -0.5,
+        this.quad(this.texTri, false, hx + s * 130, hy - 480, 120, 220, s * -2.6 + Math.PI,
           dark[0], dark[1], dark[2], edge);
-        // eyes: red glints
-        this.quad(this.texDisc, true, hx + s * 120, hy - 430, 90, 90, 0, 1, 0.16, 0.1, 0.95 * edge);
+        // eyes: cyan glints — a person, not a monster
+        this.glow(hx + s * 95, hy - 430, 150, [0.4, 0.9, 1], 0.6 * edge);
+        this.quad(this.texDisc, true, hx + s * 95, hy - 430, 80, 80, 0, 0.4, 0.9, 1, 0.95 * edge);
       }
-      // tail: wagging segments
-      let gx = hx, gy2 = hy + 330;
+      // implant glints at the neck: Cairn Cognition regulators
+      const reg = this.reducedMotion ? 0.7 : 0.45 + 0.3 * Math.sin(t * 2.2 + hx * 0.001);
+      for (const s of [-1, 1]) {
+        this.glow(hx + s * 85, hy - 330, 200, [0.7, 1, 0.95], reg * edge);
+        this.quad(this.texBox, true, hx + s * 85, hy - 330, 70, 70, 0, 0.75, 1, 0.95, reg * edge);
+      }
+      // tail: straight and still, slight curve
+      let gx = hx, gy2 = hy + 240;
       for (let i = 0; i < 3; i++) {
-        gx += Math.sin(t * 6 + i * 0.9) * 60;
-        gy2 += 130;
-        this.quad(this.texDisc, false, gx, gy2, 150, 150, 0, fur[0], fur[1], fur[2], edge);
+        gx += 26;
+        gy2 += 120;
+        this.quad(this.texDisc, false, gx, gy2, 120 - i * 22, 120 - i * 22, 0, fur[0], fur[1], fur[2], edge);
       }
     } else if (hz.kind === 2) { // Gap: dark pit with glowing edge rails
       this.quad(this.texBox, false, hx, hy, w, d, 0, 0.01, 0.015, 0.03, edge);
@@ -465,21 +575,44 @@ export class Renderer {
       this.glow(hx, hy, Math.max(w, d) * 0.8, edgeCol, 0.4 * edge);
       this.quad(this.texBox, false, hx, hy, w * 0.55, d * 0.55, 0, cream[0], cream[1], cream[2], 0.85 * edge);
       if (!tall) {
-        // masonry courses so a Block reads as a solid wall, not cargo;
-        // the top edge catches the neon and the base glows a warning
-        // toward the courier.
-        const courses = Math.max(1, Math.round(d / 260));
-        for (let c = 1; c < courses; c++) {
-          const ly = hy - d / 2 + (c * d) / courses;
-          this.quad(this.texBox, false, hx, ly, w * 0.96, 26, 0, 0.05, 0.07, 0.11, 0.9 * edge);
+        // Checkpoint gate: a dark span segment of the Kestrel-style
+        // district gate. Beacon-lit posts cap the segment; the end that
+        // borders an opening carries the cyan permitted-passage glow.
+        // Solid spans are stamped with faint abstract one-bit glyphs.
+        const openSides = this.gateOpen ? this.gateOpen.get(hz.id) : null;
+        const span = [0.075, 0.085, 0.15];
+        this.quad(this.texBox, false, hx, hy - d * 0.05, w, d, 0, span[0] * 0.6, span[1] * 0.6, span[2] * 0.6, edge);
+        this.quad(this.texBox, false, hx, hy, w, d, 0, span[0], span[1], span[2], edge);
+        this.quad(this.texBox, false, hx, hy + d * 0.06, w * 0.94, d * 0.84, 0,
+          span[0] * 1.7, span[1] * 1.7, span[2] * 1.7, edge);
+        this.glow(hx, hy, Math.max(w, d) * 0.7, [0.5, 0.35, 0.8], 0.28 * edge);
+        // one-bit glyph marks: abstract dot pairs, deterministic per segment
+        let bits = ((hz.id * 2654435761) ^ 0x9e3779b9) >>> 0;
+        const glyphs = Math.min(6, Math.max(2, Math.round(w / 1400)));
+        for (let gI = 0; gI < glyphs; gI++) {
+          bits = (bits * 1103515245 + 12345) >>> 0;
+          const on = ((bits >>> 16) & 1) === 1;
+          const gx = hx - w / 2 + ((gI + 0.5) / glyphs) * w;
+          const dotA = 0.30 * edge;
+          this.quad(this.texDisc, true, gx - 60, hy, 70, 70, 0, 0.5, 0.9, 1, on ? dotA : dotA * 0.3);
+          this.quad(this.texDisc, true, gx + 60, hy, 70, 70, 0, 0.5, 0.9, 1, on ? dotA * 0.3 : dotA);
         }
-        const cols = Math.min(14, Math.max(1, Math.round(w / 1500)));
-        for (let c = 0; c <= cols; c++) {
-          const lx = hx - w / 2 + (c * w) / cols;
-          this.quad(this.texBox, false, lx, hy, 26, d * 0.9, 0, 0.05, 0.07, 0.11, 0.7 * edge);
+        // beacon-lit posts at the segment ends
+        const blink = this.reducedMotion ? 0.7 : 0.5 + 0.5 * Math.sin(t * 3.1 + hz.id * 1.3);
+        for (const s of [-1, 1]) {
+          const ex = hx + s * w / 2;
+          const open = openSides === 'both' ||
+            (openSides === 'left' && s < 0) || (openSides === 'right' && s > 0);
+          const pc = open ? [0.35, 0.95, 1] : [0.95, 0.4, 0.8];
+          this.quad(this.texBox, false, ex, hy, 170, d * 1.02, 0, 0.08, 0.1, 0.14, edge);
+          this.glow(ex, hy + d * 0.3, 700 * blink + 150, pc, (open ? 0.75 : 0.4) * blink * edge);
+          this.quad(this.texDisc, true, ex, hy + d * 0.3, 150, 150, 0,
+            pc[0], pc[1], pc[2], (open ? 1 : 0.7) * blink * edge);
         }
+        // the top edge catches the neon; the base glows a warning toward
+        // the courier so the gate still reads as solid.
         this.quad(this.texBox, false, hx, hy + d / 2 - 60, w * 0.98, 120, 0,
-          body[0] * 2.2, body[1] * 2.2, body[2] * 2.2, edge);
+          span[0] * 2.4, span[1] * 2.4, span[2] * 2.4, edge);
         const warn = 0.55 + 0.35 * Math.sin(t * 3 + hx * 0.001);
         this.glow(hx, hy - d / 2, Math.min(w, 9000) * 0.9, [1, 0.45, 0.1], 0.30 * warn * edge);
         this.quad(this.texBox, false, hx, hy - d / 2 + 40, w * 0.98, 80, 0, 1, 0.5, 0.12, 0.85 * edge);
@@ -575,6 +708,21 @@ export class Renderer {
     part(this.texBox, true, 250, 0, 130 * s, 44 * s, 0, ZGLOW, 0.9);
     part(this.texBox, true, 250, -260 * s, 130 * s, 30 * s, 0, ZGLOW, 0.7);
     part(this.texBox, true, 250, 260 * s, 130 * s, 30 * s, 0, ZGLOW, 0.7);
+    // collar ID tag: Gödel's nine identity credentials. The glow steps down
+    // with the credentials remaining and flickers on the last one.
+    {
+      const creds = Math.max(0, Math.min(9, f.curr.lives ?? 9));
+      const frac = creds / 9;
+      const flick = creds === 1 && !f.reducedMotion
+        ? 0.4 + 0.6 * Math.abs(Math.sin(f.visualTime * 11))
+        : 1;
+      const tagA = (0.22 + 0.78 * frac) * flick;
+      const [tagX, tagY] = R(150, 0);
+      this.glow(tagX, tagY, 320 * s, CYAN, 0.3 * tagA * fade);
+      part(this.texBox, false, 150, 0, 170 * s, 130 * s, 0, [0.04, 0.06, 0.09], 1);
+      part(this.texBox, true, 150, 0, 170 * s, 130 * s, 0, CYAN, 0.85 * tagA);
+      part(this.texBox, true, 150, 0, 80 * s, 20 * s, 0, [1, 1, 1], 0.85 * tagA);
+    }
     part(this.texDisc, false, 470, 60, 620 * s, 640 * s, 0, ORANGE, 1);
     part(this.texDisc, false, 740, 20, 250 * s, 400 * s, 0, CREAM, 1);   // muzzle
     part(this.texDisc, false, 850, 60, 110 * s, 160 * s, 0, ARMOR, 1);   // nose
