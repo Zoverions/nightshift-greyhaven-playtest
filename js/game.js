@@ -557,28 +557,49 @@ class Game {
       if (e.repeat) return;
       if (k === ' ') {
         if (this.screen === 'running') { this.jumpPending = true; this.sfx.ensure(); }
-        else if (this.screen === 'menu') void this.startPractice();
+        else if (this.screen === 'menu') this.menuAction(() => this.startPractice())();
       } else if (k === 'escape') {
         if (this.screen === 'running') this.pause('DARK INTERVAL — unretained. The city keeps no record of this minute.');
         else if (this.screen === 'pause') this.resume();
       } else if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
         this.keys.add(k);
       } else if (k === 'enter' && this.screen === 'menu' && document.activeElement === $('player-name')) {
-        void this.startRanked();
+        this.menuAction(() => this.startRanked())();
       }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => this.keys.clear());
   }
 
+  // A click that throws must never die silently: surface the reason on the
+  // menu so a dead button always explains itself instead of going mute.
+  reportClickError(err) {
+    console.error(err);
+    const msg = err && err.message ? err.message : String(err);
+    this.setMenuStatus(`That click hit a snag: ${msg}`);
+  }
+
+  menuAction(fn) {
+    return () => {
+      let r;
+      try {
+        r = fn();
+      } catch (err) {
+        this.reportClickError(err);
+        return;
+      }
+      if (r && typeof r.catch === 'function') r.catch((err) => this.reportClickError(err));
+    };
+  }
+
   bindUi() {
-    $('practice-btn').addEventListener('click', () => void this.startPractice());
-    $('ranked-btn').addEventListener('click', () => void this.startRanked());
+    $('practice-btn').addEventListener('click', this.menuAction(() => this.startPractice()));
+    $('ranked-btn').addEventListener('click', this.menuAction(() => this.startRanked()));
     $('resume-btn').addEventListener('click', () => this.resume());
     $('quit-btn').addEventListener('click', () => this.toMenu());
     $('over-menu-btn').addEventListener('click', () => this.toMenu());
-    $('over-practice-btn').addEventListener('click', () => void this.startPractice());
-    $('over-again').addEventListener('click', () => {
+    $('over-practice-btn').addEventListener('click', this.menuAction(() => this.startPractice()));
+    $('over-again').addEventListener('click', this.menuAction(() => {
       if (this.mode === 'ranked' && this.ranked) {
         // A fresh ranked shift needs a fresh server-issued seed.
         // Capture the name BEFORE toMenu() clears this.ranked.
@@ -586,10 +607,11 @@ class Game {
         this.sfx.click();
         this.toMenu();
         $('player-name').value = name;
-        void this.startRanked();
-      } else void this.startPractice();
-    });
-    $('retry-upload-btn').addEventListener('click', () => void this.retrySubmit());
+        return this.startRanked();
+      }
+      return this.startPractice();
+    }));
+    $('retry-upload-btn').addEventListener('click', this.menuAction(() => this.retrySubmit()));
     $('pause-btn').addEventListener('click', () => {
       if (this.screen === 'running') this.pause('DARK INTERVAL — unretained. The city keeps no record of this minute.');
     });
@@ -598,12 +620,13 @@ class Game {
       $('sound-btn').textContent = on ? 'SOUND ON' : 'SOUND OFF';
       if (on) this.sfx.click();
     });
-    $('board-btn').addEventListener('click', () => {
+    $('board-btn').addEventListener('click', this.menuAction(() => {
       this.sfx.click();
       const open = $('board-panel').hidden;
       $('board-panel').hidden = !open;
-      if (open) void this.refreshBoard();
-    });
+      if (open) return this.refreshBoard();
+      return undefined;
+    }));
   }
 
   async refreshBoard() {
@@ -660,6 +683,11 @@ class Game {
 
 document.addEventListener('DOMContentLoaded', () => {
   const game = new Game();
+  // Last-resort net: nothing on this page may ever fail silently again.
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('unhandled rejection', e.reason);
+    if (game.screen === 'menu') game.reportClickError(e.reason);
+  });
   game.init().catch((e) => {
     console.error(e);
     $('fatal').hidden = false;

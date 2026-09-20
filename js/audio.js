@@ -24,7 +24,13 @@ export class Sfx {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      this.ctx = new AC();
+      try {
+        this.ctx = new AC();
+      } catch {
+        // No audio on this machine/browser: stay silent, never break the game.
+        this.enabled = false;
+        return null;
+      }
       this.master = this.ctx.createGain();
       this.master.gain.value = 0.5;
       this.master.connect(this.ctx.destination);
